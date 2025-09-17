@@ -1,0 +1,47 @@
+<article class="card">
+  <div class="card-header">
+    <div>
+      <div class="title" *ngIf="!editing">{{ card.title }}</div>
+      <div *ngIf="editing" style="display:grid; gap:8px;">
+        <input class="input" [(ngModel)]="card.title" (keyup.enter)="saveTitle()" />
+        <div style="display:flex; gap:8px; justify-content:flex-end;">
+          <button class="icon-btn" (click)="editing=false">Cancel</button>
+          <button class="btn" (click)="saveTitle()">Save</button>
+        </div>
+      </div>
+      <div class="muted">{{ card.createdAt | date:'short' }}</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px">
+      <span class="cat">{{card.category}}</span>
+      <button class="icon-btn warn" title="Delete card" (click)="deleteId.emit(card.id)">✕</button>
+    </div>
+  </div>
+
+  <p style="margin: 0">{{ card.detail }}</p>
+
+  <div class="controls">
+    <button class="icon-btn" (click)="favoriteToggle.emit(card.id)">{{ card.favorite ? '★' : '☆' }} Favorite</button>
+    <button class="icon-btn" *ngIf="!card.answered" (click)="markAnswered.emit(card.id)">✓ Mark answered</button>
+    <button class="icon-btn" (click)="editing = !editing" title="Edit title">✏️ Edit title</button>
+  </div>
+
+  <div class="muted" *ngIf="card.answered && card.answerText">Answer: {{card.answerText}}</div>
+
+  <div style="margin-top:8px;">
+    <strong>Comments</strong>
+    <div *ngFor="let cm of card.comments; trackBy: trackByComment" style="display:flex; gap:8px; align-items:flex-start; margin-top:8px;">
+      <div style="flex:1;">
+        <div><span style="font-weight:600">{{cm.author}}</span> — <span class="muted">{{ cm.createdAt | date:'short' }}</span></div>
+        <div>{{ cm.text }}</div>
+      </div>
+      <button class="icon-btn" title="Delete comment" (click)="commentDelete.emit({cardID: card.id, commentID: cm.commentID})">✖</button>
+    </div>
+
+    <div style="display:grid; gap:8px; margin-top:10px;">
+      <textarea class="input" rows="2" placeholder="Add a comment" [(ngModel)]="newComment"></textarea>
+      <div style="display:flex; justify-content:flex-end;">
+        <button class="btn secondary" (click)="addComment()">Add Comment</button>
+      </div>
+    </div>
+  </div>
+</article>

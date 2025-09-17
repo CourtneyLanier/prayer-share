@@ -1,0 +1,10 @@
+<div class="grid">
+  <app-prayer-card
+    *ngFor="let c of cards; trackBy: c => c.id"
+    [card]="c"
+    (deleteId)="deleteId.emit($event)"
+    (titleChange)="titleChange.emit($event)"
+    (commentAdd)="commentAdd.emit($event)"
+    (commentDelete)="commentDelete.emit($event)"
+  ></app-prayer-card>
+</div>

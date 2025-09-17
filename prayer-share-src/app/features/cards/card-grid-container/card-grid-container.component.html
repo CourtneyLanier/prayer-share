@@ -1,0 +1,46 @@
+<header style="display:flex; align-items:center; gap:12px; justify-content:space-between; padding: 14px 16px;">
+  <div style="display:flex; align-items:center; gap:10px;">
+    <img src="assets/PrayerShareLogo-192.png" alt="Prayer Share" width="28" height="28" />
+    <h2 style="margin:0;">Prayer Share</h2>
+  </div>
+  <button (click)="openAdd()">Add</button>
+</header>
+
+<app-card-grid
+  [cards]="cards"
+  (deleteId)="deleteCard($event)"
+  (titleChange)="changeTitle($event)"
+  (commentAdd)="addComment($event)"
+  (commentDelete)="deleteComment($event)"
+></app-card-grid>
+
+<!-- Add overlay -->
+<div class="modal-backdrop" *ngIf="addOpen" (click)="addOpen=false">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <h3 style="margin-top:0;">Add Prayer Request</h3>
+    <div style="display:grid; gap:10px;">
+      <div>
+        <label>Title</label>
+        <input class="input" [(ngModel)]="title" placeholder="Short title" />
+      </div>
+      <div>
+        <label>Detail</label>
+        <textarea rows="3" class="input" [(ngModel)]="detail" placeholder="Optional detail"></textarea>
+      </div>
+      <div>
+        <label>Category</label>
+        <select class="input" [(ngModel)]="category">
+          <option>General</option>
+          <option>Family</option>
+          <option>Work</option>
+          <option>Health</option>
+          <option>Church</option>
+        </select>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="secondary" (click)="addOpen=false">Cancel</button>
+        <button (click)="addCard()">Add</button>
+      </div>
+    </div>
+  </div>
+</div>

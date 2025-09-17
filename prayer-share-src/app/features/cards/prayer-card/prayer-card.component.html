@@ -1,0 +1,41 @@
+<div class="card">
+  <div style="display:flex; align-items:center; gap:10px; justify-content: space-between;">
+    <span class="badge">{{card.category || 'General'}}</span>
+    <div>
+      <button class="icon-btn" title="Edit title" (click)="editing = !editing">✏️</button>
+      <button class="icon-btn" title="Delete card" (click)="deleteId.emit(card.id)">🗑️</button>
+    </div>
+  </div>
+
+  <h3 *ngIf="!editing" style="margin:6px 0 8px 0">{{ card.title }}</h3>
+  <div *ngIf="editing" style="display:grid; gap:8px; margin-top:6px;">
+    <input class="input" [(ngModel)]="card.title" (keyup.enter)="saveTitle()" />
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button class="secondary" (click)="editing = false">Cancel</button>
+      <button (click)="saveTitle()">Save</button>
+    </div>
+  </div>
+
+  <p style="margin: 6px 0 8px 0;">{{ card.detail }}</p>
+  <div class="timestamp">Added {{ card.createdAt | date:'short' }}</div>
+
+  <hr />
+
+  <div>
+    <strong>Comments</strong>
+    <div *ngFor="let cm of card.comments; trackBy: cm => cm.commentID" style="display:flex; gap:8px; align-items:flex-start; margin-top:8px;">
+      <div style="flex:1;">
+        <div><span style="font-weight:600">{{cm.author}}</span> — <span class="timestamp">{{ cm.createdAt | date:'short' }}</span></div>
+        <div>{{ cm.text }}</div>
+      </div>
+      <button class="icon-btn" title="Delete comment" (click)="commentDelete.emit({cardID: card.id, commentID: cm.commentID})">✖</button>
+    </div>
+
+    <div style="display:grid; gap:8px; margin-top:10px;">
+      <textarea class="input" rows="2" placeholder="Add a comment" [(ngModel)]="newComment"></textarea>
+      <div style="display:flex; justify-content:flex-end;">
+        <button (click)="addComment()">Add Comment</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,94 @@
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand" style="margin-bottom:10px">
+      <img src="assets/PrayerShareLogo-192.png" alt="Prayer Share" width="28" height="28" />
+      <span>Prayer Share</span>
+    </div>
+
+    <div class="section-title">Navigation</div>
+    <div class="nav">
+      <button [class.active]="tab==='prayer'" (click)="setTab('prayer')">Prayer <small class="muted">({{ prayerCount }})</small></button>
+      <button [class.active]="tab==='praise'" (click)="setTab('praise')">Praise <small class="muted">({{ praiseCount }})</small></button>
+      <button [class.active]="tab==='favorites'" (click)="setTab('favorites')">Favorites</button>
+      <button [class.active]="tab==='shared'" (click)="setTab('shared')">Shared with me</button>
+      <a routerLink="/import" class="active" style="margin-top:6px">➕ Import from photo/scan</a>
+    </div>
+
+    <div class="section-title">Filters</div>
+    <div class="settings">
+      <div class="row">
+        <label>Search</label>
+        <input type="text" placeholder="Search cards…" (input)="onSearch(($any($event.target)).value)" style="width: 100%">
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- Verse of the day -->
+    <section class="verse-wrap">
+      <div class="verse-top">
+        <div class="verse-copy">
+          <div class="verse-ref">{{ verse.ref }} (KJV)</div>
+          <div class="verse-text">“{{ verse.text }}”</div>
+        </div>
+        <a class="btn secondary" target="_blank" rel="noopener" href="https://www.biblegateway.com/">Read in context</a>
+      </div>
+    </section>
+
+    <!-- Banner -->
+    <div class="banner"><strong>Please pray for:</strong> <span>{{ nextPrayerTitle }}</span></div>
+
+    <!-- Tools -->
+    <div class="toolbar" style="justify-content:space-between">
+      <div class="search" style="flex:1"><input placeholder="Search your prayer cards…" (input)="onSearch(($any($event.target)).value)" /></div>
+      <div style="display:flex; gap:10px; align-items:center">
+        <button class="btn" (click)="openAdd()">+ Add new prayer card</button>
+        <a class="btn secondary" routerLink="/import">Import</a>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <section *ngIf="!filtered.length" class="card" style="text-align:center; padding:24px">
+      <h3 style="margin:6px 0 8px 0">Your wall is empty</h3>
+      <p class="muted">Add your first prayer or import from a photo.</p>
+      <div style="display:flex; gap:10px; justify-content:center">
+        <button class="btn" (click)="openAdd()">+ Add a prayer</button>
+        <a class="btn secondary" routerLink="/import">Import from photo</a>
+      </div>
+    </section>
+
+    <!-- Cards -->
+    <app-card-grid
+      *ngIf="filtered.length"
+      [cards]="filtered"
+      (deleteId)="deleteCard($event)"
+      (titleChange)="changeTitle($event)"
+      (commentAdd)="addComment($event)"
+      (commentDelete)="deleteComment($event)"
+      (favoriteToggle)="toggleFavorite($event)"
+      (markAnswered)="markAnswered($event)"
+    ></app-card-grid>
+  </main>
+</div>
+
+<!-- Add overlay -->
+<div class="modal-backdrop" *ngIf="addOpen" (click)="addOpen=false">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <h3 style="margin-top:0;">Add Prayer Request</h3>
+    <div style="display:grid; gap:10px;">
+      <div><label>Title</label><input class="input" [(ngModel)]="title" placeholder="Short title" /></div>
+      <div><label>Detail</label><textarea rows="3" class="input" [(ngModel)]="detail" placeholder="Optional detail"></textarea></div>
+      <div><label>Category</label>
+        <select class="input" [(ngModel)]="category">
+          <option>General</option><option>Family</option><option>Work</option><option>Health</option><option>Church</option>
+        </select>
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn secondary" (click)="addOpen=false">Cancel</button>
+        <button class="btn" (click)="addCard()">Add</button>
+      </div>
+    </div>
+  </div>
+</div>

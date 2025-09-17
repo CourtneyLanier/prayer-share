@@ -1,0 +1,91 @@
+<div class="main" style="max-width:1000px; margin: 0 auto">
+  <a routerLink="/" class="btn secondary">← Back to Prayer Wall</a>
+  <h2>Import from photo/scan</h2>
+  <p class="muted" style="margin-top:-6px">Phase 1: Upload → OCR → Review → Import</p>
+
+  <section class="card" *ngIf="step==='upload'">
+    <strong>Step 1 — Upload images</strong>
+    <p>Choose one or more photos/screenshots of your prayer list.</p>
+    <input type="file" accept="image/*" multiple (change)="onFiles($event)"/>
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px">
+      <img *ngFor="let i of images" [src]="i.url" style="width:160px; height:auto; border:1px solid var(--border); border-radius:12px"/>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px">
+      <button class="btn" [disabled]="!images.length" (click)="step='ocr'">Next</button>
+    </div>
+  </section>
+
+  <section class="card" *ngIf="step==='ocr'">
+    <strong>Step 2 — OCR (extract text)</strong>
+    <div class="settings" style="margin-top:10px">
+      <div class="row"><label><input type="checkbox" [(ngModel)]="useBestModel"> Use higher-accuracy model (slower)</label><span class="muted">Best/eng</span></div>
+      <div class="row"><label><input type="checkbox" [(ngModel)]="enhanceImage"> Enhance image (grayscale + contrast + threshold)</label><span class="muted">better for handwriting</span></div>
+      <div class="row">
+        <label>Segmentation (PSM)</label>
+        <select [(ngModel)]="psm" class="input">
+          <option value="6">Block of text</option>
+          <option value="7">Single line (crop one line)</option>
+        </select>
+      </div>
+    </div>
+    <div class="banner" *ngIf="status"><strong>Status:</strong> <span>{{status}} — {{progress}}%</span></div>
+    <div style="display:flex; gap:8px; justify-content:flex-end">
+      <button class="btn" (click)="runOCR()" [disabled]="!images.length">Run OCR</button>
+    </div>
+    <textarea class="input" rows="12" [(ngModel)]="ocrText" placeholder="OCR text will appear here; you can edit it by hand."></textarea>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px">
+      <button class="btn" (click)="step='review'">Go to Review</button>
+    </div>
+  </section>
+
+  <section class="card" *ngIf="step==='review'">
+    <strong>Step 3 — Map each line to a new card or a comment</strong>
+    <table class="table" style="margin-top:10px">
+      <thead>
+        <tr><th style="width:48%">Line</th><th style="width:14%">Type</th><th style="width:18%">Target / Category</th><th style="width:20%">Preview</th></tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let row of lines; let i = index">
+          <td><input class="input" [(ngModel)]="row.text"/></td>
+          <td>
+            <select class="input" [(ngModel)]="row.kind">
+              <option value="card">New Card</option>
+              <option value="comment">Comment</option>
+            </select>
+          </td>
+          <td>
+            <ng-container *ngIf="row.kind==='card'; else commentSel">
+              <select class="input" [(ngModel)]="row.category">
+                <option>General</option><option>Family</option><option>Work</option><option>Health</option><option>Church</option>
+              </select>
+            </ng-container>
+            <ng-template #commentSel>
+              <select class="input" [(ngModel)]="row.cardID">
+                <option [ngValue]="undefined">Select card…</option>
+                <option *ngFor="let c of cards" [ngValue]="c.id">{{c.title}}</option>
+              </select>
+            </ng-template>
+          </td>
+          <td>
+            <div *ngIf="row.kind==='card'"><strong>Card:</strong> {{row.text}} <span class="badge">{{row.category}}</span></div>
+            <div *ngIf="row.kind==='comment'"><strong>Comment:</strong> {{row.text}} <span class="muted">→ {{ cardTitleById(row.cardID) }}</span></div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px">
+      <button class="btn secondary" (click)="step='ocr'">Back</button>
+      <button class="btn" (click)="importNow()" [disabled]="!lines.length || importing">Import</button>
+    </div>
+    <div *ngIf="error" class="banner"><strong>Error:</strong> <span>{{error}}</span></div>
+  </section>
+
+  <section class="card" *ngIf="step==='done'">
+    <h3>Import complete 🎉</h3>
+    <p>You can now review your cards and comments on the Prayer Wall.</p>
+    <div style="display:flex; gap:10px">
+      <a routerLink="/" class="btn">Go to Prayer Wall</a>
+      <button class="btn secondary" (click)="step='upload'">Import another photo</button>
+    </div>
+  </section>
+</div>

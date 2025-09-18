@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -21,7 +21,7 @@ interface LineRow {
   templateUrl: './import-wizard.component.html',
   styleUrls: ['./import-wizard.component.css'],
 })
-export class ImportWizardComponent {
+export class ImportWizardComponent implements OnDestroy {
   // --- flow state ---
   step: Step = 'upload';
   images: { file: File; url: string }[] = [];
@@ -56,9 +56,16 @@ export class ImportWizardComponent {
     this.data.cards$.subscribe((c) => (this.cards = c));
   }
 
+  ngOnDestroy() {
+    // prevent object URL leaks
+    try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
+  }
+
   // ----------------- Step 1: upload -----------------
   onFiles(ev: Event) {
     const files = Array.from((ev.target as HTMLInputElement).files || []);
+    // Revoke old previews
+    this.images.forEach(im => URL.revokeObjectURL(im.url));
     this.images = files.map((f) => ({ file: f, url: URL.createObjectURL(f) }));
     if (this.images.length) this.step = 'ocr';
   }
@@ -95,6 +102,7 @@ export class ImportWizardComponent {
     this.progress = 0;
 
     try {
+      // For now, send the first image (most lists are a single page)
       const file = this.images[0].file;
       const fd = new FormData();
       fd.append('image', file, file.name);
@@ -199,7 +207,6 @@ export class ImportWizardComponent {
     try {
       const { createWorker } = await import('tesseract.js');
 
-      // Options must go in the 3rd parameter per tesseract.js typings
       worker = await createWorker('eng', undefined, {
         logger: (m: any) => {
           if (m?.status && typeof m.progress === 'number') {
@@ -237,8 +244,7 @@ export class ImportWizardComponent {
       this.step = 'review';
 
       try {
-        // fire & forget (do not await)
-        worker && worker.terminate && worker.terminate();
+        worker && worker.terminate && worker.terminate(); // fire & forget
       } catch {}
     }
   }

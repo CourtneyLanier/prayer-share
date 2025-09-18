@@ -3,6 +3,30 @@
 <h2>Import from photo/scan</h2>
 <p class="muted">Phase 1: Upload → <strong>OCR</strong> → Review → Import</p>
 
+<!-- ===================== Step 1 — Upload ===================== -->
+<section *ngIf="step === 'upload'">
+  <div class="card">
+    <div class="card-header">Step 1 — Upload</div>
+    <div class="card-body">
+      <input type="file"
+             accept="image/*,.png,.jpg,.jpeg,.webp,.heic,.heif"
+             multiple
+             (change)="onFiles($event)" />
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <img *ngFor="let im of images"
+             [src]="im.url"
+             alt="preview"
+             style="height:80px; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,.15)"/>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+        <button class="btn" [disabled]="!images.length" (click)="step='ocr'">Next → OCR</button>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ===================== Step 2 — OCR ===================== -->
 <section *ngIf="step === 'ocr'">
   <div class="card">
@@ -145,7 +169,7 @@
   </div>
 </section>
 
-<!-- ===================== Step 4 — Done (optional) ===================== -->
+<!-- ===================== Step 4 — Done ===================== -->
 <section *ngIf="step === 'done'">
   <div class="card">
     <div class="card-header">Import complete</div>

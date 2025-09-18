@@ -91,35 +91,43 @@ export class ImportWizardComponent implements OnDestroy {
   }
 
   // ----------------- Cloud OCR (Netlify function) -----------------
-  async runCloudOCR() {
-    if (!this.images.length) {
-      this.error = 'Please upload an image first.';
-      return;
-    }
-    this.cloudBusy = true;
-    this.error = '';
-    this.status = 'Sending image to cloud OCR...';
-    this.progress = 0;
-
-    try {
-      // For now, send the first image (most lists are a single page)
-      const file = this.images[0].file;
-      const fd = new FormData();
-      fd.append('image', file, file.name);
-
-      const resp = await fetch(this.cloudEndpoint, { method: 'POST', body: fd });
-      if (!resp.ok) throw new Error('Cloud OCR failed: ' + resp.status + ' ' + resp.statusText);
-      const data = await resp.json();
-      const text = (data && (data.text || (Array.isArray(data.lines) ? data.lines.join('\n') : ''))) || '';
-      this.ocrText = (text || '').trim();
-      this.splitFromText();
-      this.status = 'Cloud OCR done';
-    } catch (e: any) {
-      this.error = String(e?.message || e);
-    } finally {
-      this.cloudBusy = false;
-    }
+async runCloudOCR() {
+  // Auto-correct common typo (missing leading slash)
+  if (!this.cloudEndpoint.startsWith('/')) {
+    this.cloudEndpoint = '/.netlify/functions/ocr';
   }
+  if (!this.images.length) { this.error = 'Please upload an image first.'; return; }
+
+  this.cloudBusy = true;
+  this.error = '';
+  this.status = 'Sending image to cloud OCR...';
+  this.progress = 0;
+
+  try {
+    const file = this.images[0].file;
+    const fd = new FormData();
+    fd.append('image', file, file.name);
+
+    const resp = await fetch(this.cloudEndpoint, { method: 'POST', body: fd });
+
+    // Try to read JSON either way so we can show the server-side message
+    let data: any = null;
+    try { data = await resp.json(); } catch {}
+
+    if (!resp.ok) {
+      throw new Error(data?.error || (`${resp.status} ${resp.statusText}`));
+    }
+
+    const text = (data?.text || (Array.isArray(data?.lines) ? data.lines.join('\n') : '')).trim();
+    this.ocrText = text;
+    this.splitFromText();
+    this.status = 'Cloud OCR done';
+  } catch (e: any) {
+    this.error = String(e?.message || e);
+  } finally {
+    this.cloudBusy = false;
+  }
+}
 
   // ----------------- Local OCR (Tesseract) -----------------
   private async preprocessFile(file: File): Promise<HTMLCanvasElement | File> {

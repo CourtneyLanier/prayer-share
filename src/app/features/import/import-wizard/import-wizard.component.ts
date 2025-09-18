@@ -6,6 +6,7 @@ import { PrayerDataService } from '../../../_core/_models/prayer-data.service';
 import { PrayerCard } from '../../../_core/_models/prayer.models';
 
 type Step = 'upload' | 'ocr' | 'review' | 'done';
+
 interface LineRow {
   text: string;
   kind: 'card' | 'comment';
@@ -18,83 +19,164 @@ interface LineRow {
   standalone: true,
   imports: [CommonModule, FormsModule, RouterModule],
   templateUrl: './import-wizard.component.html',
-  styleUrls: ['./import-wizard.component.css']
+  styleUrls: ['./import-wizard.component.css'],
 })
 export class ImportWizardComponent {
+  // --- flow state ---
   step: Step = 'upload';
-  images: {file: File, url: string}[] = [];
+  images: { file: File; url: string }[] = [];
+
+  // --- OCR / review state ---
   ocrText = '';
   lines: LineRow[] = [];
-  importing = false;
-  error = '';
   cards: PrayerCard[] = [];
-  cloudEndpoint = '/.netlify/functions/ocr';
+  importing = false;
+
+  // --- UI state ---
+  error = '';
+  status = '';
+  progress = 0;
+
+  // --- local OCR options ---
   useBestModel = true;
   enhanceImage = true;
+  /** PSM 6 = block of text, PSM 7 = single line */
   psm: '6' | '7' = '6';
 
-  progress = 0;
-  status = '';
+  // --- cloud OCR (Netlify function) ---
+  cloudEndpoint =
+    (location.hostname.endsWith('netlify.app') || location.hostname.endsWith('ceebsync.com'))
+      ? '/.netlify/functions/ocr'
+      : '/.netlify/functions/ocr'; // safe default
+  cloudBusy = false;
 
   constructor(private data: PrayerDataService) {}
-  ngOnInit() { this.data.cards$.subscribe(c => this.cards = c); }
 
+  ngOnInit() {
+    this.data.cards$.subscribe((c) => (this.cards = c));
+  }
+
+  // ----------------- Step 1: upload -----------------
   onFiles(ev: Event) {
     const files = Array.from((ev.target as HTMLInputElement).files || []);
-    this.images = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));
+    this.images = files.map((f) => ({ file: f, url: URL.createObjectURL(f) }));
     if (this.images.length) this.step = 'ocr';
   }
 
+  // ----------------- Helpers -----------------
+  trackLine(index: number, row: LineRow) {
+    return row?.text ?? index;
+  }
+
+  cardTitleById(id?: number): string {
+    if (id == null) return '—';
+    const found = this.cards.find((x) => x.id === id);
+    return found ? found.title : '—';
+  }
+
+  splitFromText() {
+    const raw = (this.ocrText || '')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    this.lines = raw.map((s) => ({ text: s, kind: 'card', category: 'General' }));
+    this.step = 'review';
+  }
+
+  // ----------------- Cloud OCR (Netlify function) -----------------
+  async runCloudOCR() {
+    if (!this.images.length) {
+      this.error = 'Please upload an image first.';
+      return;
+    }
+    this.cloudBusy = true;
+    this.error = '';
+    this.status = 'Sending image to cloud OCR...';
+    this.progress = 0;
+
+    try {
+      const file = this.images[0].file;
+      const fd = new FormData();
+      fd.append('image', file, file.name);
+
+      const resp = await fetch(this.cloudEndpoint, { method: 'POST', body: fd });
+      if (!resp.ok) throw new Error('Cloud OCR failed: ' + resp.status + ' ' + resp.statusText);
+      const data = await resp.json();
+      const text = (data && (data.text || (Array.isArray(data.lines) ? data.lines.join('\n') : ''))) || '';
+      this.ocrText = (text || '').trim();
+      this.splitFromText();
+      this.status = 'Cloud OCR done';
+    } catch (e: any) {
+      this.error = String(e?.message || e);
+    } finally {
+      this.cloudBusy = false;
+    }
+  }
+
+  // ----------------- Local OCR (Tesseract) -----------------
   private async preprocessFile(file: File): Promise<HTMLCanvasElement | File> {
     if (!this.enhanceImage) return file;
+
     const img = new Image();
     const url = URL.createObjectURL(file);
-    await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = e => rej(e); img.src = url; });
+    await new Promise<void>((res, rej) => {
+      img.onload = () => res();
+      img.onerror = (e) => rej(e);
+      img.src = url;
+    });
+
     const scale = 1.5;
     const w = Math.floor(img.width * scale);
     const h = Math.floor(img.height * scale);
     const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext('2d')!;
     ctx.drawImage(img, 0, 0, w, h);
 
+    // grayscale + simple adaptive threshold
     const imageData = ctx.getImageData(0, 0, w, h);
     const data = imageData.data;
-
     const contrast = 1.25;
+
     const integ = new Float64Array(w * h);
-    for (let y=0; y<h; y++) {
+    for (let y = 0; y < h; y++) {
       let rowsum = 0;
-      for (let x=0; x<w; x++) {
-        const i = (y*w + x) * 4;
-        let v = (0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2]);
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        let v = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
         v = (v - 128) * contrast + 128;
-        if (v < 0) v = 0; if (v > 255) v = 255;
+        if (v < 0) v = 0;
+        if (v > 255) v = 255;
         rowsum += v;
-        const idx = y*w + x;
-        integ[idx] = rowsum + (y>0 ? integ[idx - w] : 0);
+        const idx = y * w + x;
+        integ[idx] = rowsum + (y > 0 ? integ[idx - w] : 0);
       }
     }
-    const halfWin = Math.floor(Math.max(15, Math.floor(Math.min(w,h) * 0.02)) / 2);
-    function meanAt(x:number,y:number,half:number){
-      const x1 = Math.max(0, x-half), y1 = Math.max(0, y-half);
-      const x2 = Math.min(w-1, x+half), y2 = Math.min(h-1, y+half);
-      const A = integ[y1*w + x1];
-      const B = integ[y1*w + x2];
-      const C = integ[y2*w + x1];
-      const D = integ[y2*w + x2];
+
+    const halfWin = Math.floor(Math.max(15, Math.floor(Math.min(w, h) * 0.02)) / 2);
+    function meanAt(x: number, y: number, half: number) {
+      const x1 = Math.max(0, x - half),
+        y1 = Math.max(0, y - half);
+      const x2 = Math.min(w - 1, x + half),
+        y2 = Math.min(h - 1, y + half);
+      const A = integ[y1 * w + x1];
+      const B = integ[y1 * w + x2];
+      const C = integ[y2 * w + x1];
+      const D = integ[y2 * w + x2];
       const area = (x2 - x1 + 1) * (y2 - y1 + 1);
       return (D - B - C + A) / area;
     }
-    for (let y=0; y<h; y++) {
-      for (let x=0; x<w; x++) {
-        const i = (y*w + x) * 4;
-        const lum = data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114;
-        const mean = meanAt(x,y,halfWin);
-        const isInk = lum < (mean - 10);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+        const mean = meanAt(x, y, halfWin);
+        const isInk = lum < mean - 10;
         const val = isInk ? 0 : 255;
-        data[i] = data[i+1] = data[i+2] = val;
-        data[i+3] = 255;
+        data[i] = data[i + 1] = data[i + 2] = val;
+        data[i + 3] = 255;
       }
     }
     ctx.putImageData(imageData, 0, 0);
@@ -102,9 +184,12 @@ export class ImportWizardComponent {
     return canvas;
   }
 
-  async runOCR() {
+  async runLocalOCR() {
+    if (!this.images.length) {
+      this.error = 'Please upload an image first.';
+      return;
+    }
     this.error = '';
-    if (!this.images.length) return;
     this.status = 'Loading OCR engine...';
     this.progress = 0;
 
@@ -113,24 +198,22 @@ export class ImportWizardComponent {
 
     try {
       const { createWorker } = await import('tesseract.js');
-      worker = await createWorker(
-        'eng',
-        undefined,
-        {
-          logger: (m: any) => {
-            if (m?.status && typeof m.progress === 'number') {
-              this.progress = Math.max(this.progress, Math.round(m.progress * 100));
-            }
-          },
-          langPath: this.useBestModel
-            ? 'https://tessdata.projectnaptha.com/4.0.0_best'
-            : 'https://tessdata.projectnaptha.com/4.0.0',
-        }
-      );
+
+      // Options must go in the 3rd parameter per tesseract.js typings
+      worker = await createWorker('eng', undefined, {
+        logger: (m: any) => {
+          if (m?.status && typeof m.progress === 'number') {
+            this.progress = Math.max(this.progress, Math.round(m.progress * 100));
+          }
+        },
+        langPath: this.useBestModel
+          ? 'https://tessdata.projectnaptha.com/4.0.0_best'
+          : 'https://tessdata.projectnaptha.com/4.0.0',
+      });
 
       for (let i = 0; i < this.images.length; i++) {
         const img = this.images[i];
-        this.status = `Reading image ${i+1} of ${this.images.length}...`;
+        this.status = `Reading image ${i + 1} of ${this.images.length}...`;
         const src = await this.preprocessFile(img.file);
         await worker.setParameters({
           tessedit_pageseg_mode: (this.psm === '7' ? 7 : 6) as any,
@@ -140,38 +223,39 @@ export class ImportWizardComponent {
         out.push((data?.text || '').trim());
       }
     } catch (e: any) {
-      console.error('OCR error', e);
       this.error = String(e?.message || e);
     } finally {
-      // Update UI FIRST, then shut down the worker in the background.
+      // Update UI first so terminate can't block the step transition
       this.ocrText = (out.join('\n') || '').trim();
       this.lines = (this.ocrText || '')
         .split(/\r?\n/)
-        .map(s => s.replace(/[•·•·]+/g, '').trim())
+        .map((s) => s.replace(/[•·•·]+/g, '').trim())
         .filter(Boolean)
-        .map(s => ({ text: s, kind: 'card', category: 'General' }));
+        .map((s) => ({ text: s, kind: 'card', category: 'General' }));
       this.progress = 100;
-      this.status = this.ocrText ? 'OCR done' : (this.status || 'No text recognized');
+      this.status = this.ocrText ? 'OCR done' : this.status || 'No text recognized';
       this.step = 'review';
 
-      // Terminate without awaiting so it can't freeze the UI
-      try { worker && worker.terminate && worker.terminate(); } catch {}
+      try {
+        // fire & forget (do not await)
+        worker && worker.terminate && worker.terminate();
+      } catch {}
     }
   }
 
-  cardTitleById(id?: number): string {
-    if (id == null) return '—';
-    const found = this.cards.find((x: PrayerCard) => x.id === id);
-    return found ? found.title : '—';
-  }
-
+  // ----------------- Import -----------------
   importNow() {
     this.importing = true;
+    this.error = '';
     try {
       for (const row of this.lines) {
         if (!row.text?.trim()) continue;
         if (row.kind === 'card') {
-          this.data.addCard({ title: row.text.trim(), detail: '', category: row.category || 'General' });
+          this.data.addCard({
+            title: row.text.trim(),
+            detail: '',
+            category: row.category || 'General',
+          });
         } else if (row.kind === 'comment' && row.cardID) {
           this.data.addComment(row.cardID, 'You', row.text.trim());
         }

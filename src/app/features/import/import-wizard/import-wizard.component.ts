@@ -28,7 +28,7 @@ export class ImportWizardComponent {
   importing = false;
   error = '';
   cards: PrayerCard[] = [];
-
+  cloudEndpoint = '/.netlify/functions/ocr';
   useBestModel = true;
   enhanceImage = true;
   psm: '6' | '7' = '6';

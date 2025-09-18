@@ -2,8 +2,14 @@
   command = "npm ci && npm run build"
   publish = "dist/prayer-share/browser"
 
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+
 # (also works via public/_redirects; keeping both is fine)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+

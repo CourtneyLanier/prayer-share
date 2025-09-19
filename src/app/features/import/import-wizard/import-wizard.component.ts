@@ -82,14 +82,65 @@ export class ImportWizardComponent implements OnDestroy {
   }
 
   splitFromText() {
-    const raw = (this.ocrText || '')
+    const rawLines = (this.ocrText || '')
       .split(/\r?\n/)
-      .map((s) => s.trim())
+      .map(s => s.trim())
       .filter(Boolean);
-    this.lines = raw.map((s) => ({ text: s, kind: 'card', category: 'General' }));
+    this.lines = this.smartMapLines(rawLines);
     this.step = 'review';
   }
+	private normalizeName(s: string) {
+	  return (s || '')
+		.toLowerCase()
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/g, '')     // strip accents
+		.replace(/[^a-z0-9]+/g, ' ')          // keep letters/numbers
+		.trim();
+	}
 
+	private parseLine(line: string): { name?: string; body?: string; titleOnly?: string } {
+	  // Match: Name — body | Name - body | Name: body
+	  const m = line.match(/^\s*([^—\-:]+?)\s*[—\-:]\s*(.+)\s*$/);
+	  if (m) {
+		const name = m[1].trim();
+		const body = m[2].trim();
+		return { name, body };
+	  }
+	  // Otherwise treat whole line as a card title
+	  return { titleOnly: line.trim() };
+	}
+
+	private smartMapLines(lines: string[]): LineRow[] {
+	  // Build quick lookup of existing cards by normalized title
+	  const byNormTitle = new Map<string, PrayerCard>();
+	  for (const c of (this.cards || [])) {
+		byNormTitle.set(this.normalizeName(c.title), c);
+	  }
+
+	  const out: LineRow[] = [];
+	  for (const line of lines) {
+		const { name, body, titleOnly } = this.parseLine(line);
+
+		if (name) {
+		  const norm = this.normalizeName(name);
+		  const existing = byNormTitle.get(norm);
+		  if (existing && body) {
+			// Existing card → make a comment; drop the name
+			out.push({ text: body, kind: 'comment', cardID: Number(existing.id) });
+		  } else {
+			// No existing card → create a new card.
+			// Put the "body" into the card detail later (importNow handles it).
+			const title = name;
+			const combined = body ? `${name} — ${body}` : name;
+			out.push({ text: combined, kind: 'card', category: 'General' });
+		  }
+		} else if (titleOnly) {
+		  out.push({ text: titleOnly, kind: 'card', category: 'General' });
+		}
+	  }
+	  return out;
+	}
+	  
   // ----------------- Cloud OCR (Netlify function) -----------------
 async runCloudOCR() {
   // Auto-correct common typo (missing leading slash)

@@ -24,7 +24,15 @@ html,body{margin:0; font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
   .sidebar{position:relative; width:auto; transform:none; box-shadow:none}
   .sidebar-backdrop{display:none}
 }
-
+@media (max-width: 900px) {
+  .ps-layout {
+    grid-template-columns: 1fr; /* stack sidebar over content */
+  }
+  .ps-sidebar {
+    position: static;
+    width: auto;
+  }
+}
 /* SIDEBAR */
 .sidebar{background:var(--panel); color:var(--text); border-right:1px solid var(--border); padding:18px; overflow:auto; position:relative; min-height:100dvh}
 .brand{display:flex; align-items:center; gap:10px; font-weight:700}
@@ -78,7 +86,11 @@ textarea{resize:vertical; min-height:70px; background:var(--panel); color:var(--
 .icon-btn{background:transparent; color:var(--text); padding:6px 10px; border:1px solid var(--border); border-radius:12px; cursor:pointer}
 .icon-btn.warn{color:var(--accent-warn); border-color:var(--accent-warn)}
 .icon-btn:hover{box-shadow:var(--shadow)}
-
+.ps-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
 /* Modal */
 .modal-backdrop { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); display: grid; place-items: center; z-index: 50; }
 .modal { background: white; padding: 1rem; border-radius: 16px; width: min(720px, 92vw); box-shadow: 0 10px 30px rgba(2, 8, 20, 0.2); }

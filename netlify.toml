@@ -6,7 +6,6 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
-
 # (also works via public/_redirects; keeping both is fine)
 [[redirects]]
   from = "/*"

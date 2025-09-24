@@ -69,4 +69,113 @@
       <div class="settings" style="margin-top:12px">
         <div class="row">
           <strong>Cloud OCR (beta)</strong>
-          <span class="muted" style="margin-left
+          <span class="muted" style="margin-left:8px">uses Netlify function</span>
+        </div>
+        <div class="row">
+          <label>Endpoint</label>
+          <input class="input" [(ngModel)]="cloudEndpoint" placeholder="/.netlify/functions/ocr" />
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end">
+          <button class="btn secondary" [disabled]="cloudBusy" (click)="runCloudOCR()">Run Cloud OCR</button>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+        <div class="muted">Or paste text above and split it into lines.</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn secondary" (click)="splitFromText()">Split text to lines →</button>
+          <button class="btn" (click)="step = 'review'">Go to Review</button>
+        </div>
+      </div>
+
+      <div *ngIf="error" class="alert error" style="margin-top:8px">
+        <strong>Error:</strong> {{ error }}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Step 3 — Review -->
+<section *ngIf="step === 'review'">
+  <div class="card">
+    <div class="card-header">Step 3 — Map each line to a new card or a comment</div>
+    <div class="card-body">
+
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:45%">Line</th>
+            <th style="width:15%">Type</th>
+            <th style="width:25%">Target / Category</th>
+            <th style="width:15%">Preview</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of lines; trackBy: trackLine">
+            <td><input class="input" [(ngModel)]="row.text" /></td>
+
+            <td style="display:flex; gap:6px; align-items:center">
+              <select class="input" [(ngModel)]="row.kind" style="flex:1">
+                <option value="card">New Card</option>
+                <option value="comment">Comment</option>
+              </select>
+              <button class="btn secondary" style="padding:4px 8px" (click)="toggleRowKind(row)">↔</button>
+            </td>
+
+            <td>
+              <ng-container *ngIf="row.kind === 'card'; else commentTarget">
+                <select class="input" [(ngModel)]="row.category">
+                  <option>General</option>
+                  <option>Family</option>
+                  <option>Work</option>
+                  <option>Health</option>
+                  <option>Church</option>
+                  <option>Friends</option>
+                </select>
+              </ng-container>
+              <ng-template #commentTarget>
+                <select class="input" [(ngModel)]="row.cardID">
+                  <option [ngValue]="undefined">— choose card —</option>
+                  <option *ngFor="let c of cards" [ngValue]="c.id">{{ c.title }}</option>
+                </select>
+              </ng-template>
+            </td>
+
+            <td class="muted">
+              <ng-container *ngIf="row.kind === 'card'; else prevComment">
+                {{ (row.text || '—') | slice:0:40 }}{{ (row.text?.length||0) > 40 ? '…' : '' }}
+              </ng-container>
+              <ng-template #prevComment>
+                <span style="padding:2px 6px; border-radius:10px; background:#eef; margin-right:6px;">comment →</span>
+                {{ cardTitleById(row.cardID) }}
+              </ng-template>
+            </td>
+          </tr>
+          <tr *ngIf="!lines.length">
+            <td colspan="4" class="muted">No lines yet. Run OCR, Cloud OCR, or split pasted text.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end">
+        <button class="btn secondary" (click)="step = 'ocr'">Back</button>
+        <button class="btn" [disabled]="!lines.length" (click)="importNow()">Import</button>
+      </div>
+
+      <div *ngIf="error" class="alert error" style="margin-top:8px">
+        <strong>Error:</strong> {{ error }}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Step 4 — Done -->
+<section *ngIf="step === 'done'">
+  <div class="card">
+    <div class="card-header">Import complete</div>
+    <div class="card-body">
+      <p>Your items were added to the wall.</p>
+      <a routerLink="/" class="btn">Go to Prayer Wall</a>
+    </div>
+  </div>
+</section>

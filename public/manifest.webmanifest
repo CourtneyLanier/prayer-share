@@ -1,9 +1,10 @@
 {
-  "name": "prayer-share",
-  "short_name": "prayer-share",
+  "name": "Prayer Share",
+  "short_name": "Prayer",
+  "start_url": "/",
   "display": "standalone",
-  "scope": "./",
-  "start_url": "./",
+  "background_color": "#f7f2d4",
+  "theme_color": "#2b7de9",
   "icons": [
     {
       "src": "icons/icon-72x72.png",

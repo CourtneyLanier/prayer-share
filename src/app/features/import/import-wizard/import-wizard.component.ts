@@ -1,335 +1,176 @@
-import { Component, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RouterModule } from '@angular/router';
-import { PrayerDataService } from '../../../_core/_models/prayer-data.service';
-import { PrayerCard } from '../../../_core/_models/prayer.models';
+<a routerLink="/" class="btn secondary" style="margin-bottom: 12px">← Back to Prayer Wall</a>
 
-type Step = 'upload' | 'ocr' | 'review' | 'done';
+<h2>Import from photo/scan</h2>
+<p class="muted">Phase 1: Upload → <strong>OCR</strong> → Review → Import</p>
 
-interface LineRow {
-  text: string;
-  kind: 'card' | 'comment';
-  category?: string;
-  cardID?: number;
-}
+<!-- Step 1 — Upload -->
+<section *ngIf="step === 'upload'">
+  <div class="card">
+    <div class="card-header">Step 1 — Upload</div>
+    <div class="card-body">
+      <input type="file"
+             accept="image/*,.png,.jpg,.jpeg,.webp,.heic,.heif"
+             multiple
+             (change)="onFiles($event)" />
 
-@Component({
-  selector: 'app-import-wizard',
-  standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
-  templateUrl: './import-wizard.component.html',
-  styleUrls: ['./import-wizard.component.css'],
-})
-export class ImportWizardComponent implements OnDestroy {
-  // --- flow state ---
-  step: Step = 'upload';
-  images: { file: File; url: string }[] = [];
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <img *ngFor="let im of images"
+             [src]="im.url"
+             alt="preview"
+             style="height:80px; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,.15)"/>
+      </div>
 
-  // --- OCR / review state ---
-  ocrText = '';
-  lines: LineRow[] = [];
-  cards: PrayerCard[] = [];
-  importing = false;
+      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+        <button class="btn" [disabled]="!images.length" (click)="step='ocr'">Next → OCR</button>
+      </div>
+    </div>
+  </div>
+</section>
 
-  // --- UI state ---
-  error = '';
-  status = '';
-  progress = 0;
+<!-- Step 2 — OCR -->
+<section *ngIf="step === 'ocr'">
+  <div class="card">
+    <div class="card-header">Step 2 — OCR (extract text)</div>
+    <div class="card-body">
 
-  // --- local OCR options ---
-  useBestModel = true;
-  enhanceImage = true;
-  /** PSM 6 = block of text, PSM 7 = single line */
-  psm: '6' | '7' = '6';
+      <div class="settings">
+        <label class="checkbox">
+          <input type="checkbox" [(ngModel)]="useBestModel" />
+          Use higher-accuracy model (slower)
+        </label>
 
-  // --- cloud OCR (Netlify function) ---
-  cloudEndpoint =
-    (location.hostname.endsWith('netlify.app') || location.hostname.endsWith('ceebsync.com'))
-      ? '/.netlify/functions/ocr'
-      : '/.netlify/functions/ocr'; // safe default
-  cloudBusy = false;
+        <label class="checkbox">
+          <input type="checkbox" [(ngModel)]="enhanceImage" />
+          Enhance image (grayscale + contrast + threshold)
+        </label>
 
-  constructor(private data: PrayerDataService) {}
+        <div class="row">
+          <label>Segmentation (PSM)</label>
+          <select class="input" [(ngModel)]="psm">
+            <option value="6">Block of text</option>
+            <option value="7">Single line</option>
+          </select>
+        </div>
+      </div>
 
-  ngOnInit() {
-    this.data.cards$.subscribe((c) => (this.cards = c));
-  }
+      <div class="alert">
+        <strong>Status:</strong> {{ status || '—' }} <span *ngIf="progress">— {{ progress }}%</span>
+      </div>
 
-  ngOnDestroy() {
-    // prevent object URL leaks
-    try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
-  }
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-bottom:8px;">
+        <button class="btn" (click)="runLocalOCR()">Run OCR</button>
+      </div>
 
-  // ----------------- Step 1: upload -----------------
-  onFiles(ev: Event) {
-    const files = Array.from((ev.target as HTMLInputElement).files || []);
-    // Revoke old previews
-    this.images.forEach(im => URL.revokeObjectURL(im.url));
-    this.images = files.map((f) => ({ file: f, url: URL.createObjectURL(f) }));
-    if (this.images.length) this.step = 'ocr';
-  }
+      <textarea class="input" rows="8"
+        placeholder="OCR text will appear here; you can edit it by hand."
+        [(ngModel)]="ocrText"></textarea>
 
-  // ----------------- Helpers -----------------
-  trackLine(index: number, row: LineRow) {
-    return row?.text ?? index;
-  }
+      <!-- Cloud OCR block -->
+      <div class="settings" style="margin-top:12px">
+        <div class="row">
+          <strong>Cloud OCR (beta)</strong>
+          <span class="muted" style="margin-left:8px">uses Netlify function</span>
+        </div>
+        <div class="row">
+          <label>Endpoint</label>
+          <input class="input" [(ngModel)]="cloudEndpoint" placeholder="/.netlify/functions/ocr" />
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end">
+          <button class="btn secondary" [disabled]="cloudBusy" (click)="runCloudOCR()">Run Cloud OCR</button>
+        </div>
+      </div>
 
-  cardTitleById(id?: number): string {
-    if (id == null) return '—';
-    const found = this.cards.find((x) => x.id === id);
-    return found ? found.title : '—';
-  }
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+        <div class="muted">Or paste text above and split it into lines.</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn secondary" (click)="splitFromText()">Split text to lines →</button>
+          <button class="btn" (click)="step = 'review'">Go to Review</button>
+        </div>
+      </div>
 
-  splitFromText() {
-    const rawLines = (this.ocrText || '')
-      .split(/\r?\n/)
-      .map(s => s.trim())
-      .filter(Boolean);
-    this.lines = this.smartMapLines(rawLines);
-    this.step = 'review';
-  }
-	private normalizeName(s: string) {
-	  return (s || '')
-		.toLowerCase()
-		.normalize('NFKD')
-		.replace(/[\u0300-\u036f]/g, '')     // strip accents
-		.replace(/[^a-z0-9]+/g, ' ')          // keep letters/numbers
-		.trim();
-	}
+      <div *ngIf="error" class="alert error" style="margin-top:8px">
+        <strong>Error:</strong> {{ error }}
+      </div>
+    </div>
+  </div>
+</section>
 
-	private parseLine(line: string): { name?: string; body?: string; titleOnly?: string } {
-	  // Match: Name — body | Name - body | Name: body
-	  const m = line.match(/^\s*([^—\-:]+?)\s*[—\-:]\s*(.+)\s*$/);
-	  if (m) {
-		const name = m[1].trim();
-		const body = m[2].trim();
-		return { name, body };
-	  }
-	  // Otherwise treat whole line as a card title
-	  return { titleOnly: line.trim() };
-	}
+<!-- Step 3 — Review -->
+<section *ngIf="step === 'review'">
+  <div class="card">
+    <div class="card-header">Step 3 — Map each line to a new card or a comment</div>
+    <div class="card-body">
 
-	private smartMapLines(lines: string[]): LineRow[] {
-	  // Build quick lookup of existing cards by normalized title
-	  const byNormTitle = new Map<string, PrayerCard>();
-	  for (const c of (this.cards || [])) {
-		byNormTitle.set(this.normalizeName(c.title), c);
-	  }
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:45%">Line</th>
+            <th style="width:15%">Type</th>
+            <th style="width:25%">Target / Category</th>
+            <th style="width:15%">Preview</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of lines; trackBy: trackLine">
+            <td><input class="input" [(ngModel)]="row.text" /></td>
+            <td>
+              <select class="input" [(ngModel)]="row.kind">
+                <option value="card">New Card</option>
+                <option value="comment">Comment</option>
+              </select>
+            </td>
+            <td>
+              <ng-container *ngIf="row.kind === 'card'; else commentTarget">
+                <select class="input" [(ngModel)]="row.category">
+                  <option>General</option>
+                  <option>Family</option>
+                  <option>Work</option>
+                  <option>Health</option>
+                  <option>Church</option>
+                  <option>Friends</option>
+                </select>
+              </ng-container>
+              <ng-template #commentTarget>
+                <select class="input" [(ngModel)]="row.cardID">
+                  <option [ngValue]="undefined">— choose card —</option>
+                  <option *ngFor="let c of cards" [ngValue]="c.id">{{ c.title }}</option>
+                </select>
+              </ng-template>
+            </td>
+            <td class="muted">
+              <ng-container *ngIf="row.kind === 'card'; else prevComment">
+                {{ (row.text || '—') | slice:0:40 }}{{ (row.text?.length||0) > 40 ? '…' : '' }}
+              </ng-container>
+              <ng-template #prevComment>
+                → {{ cardTitleById(row.cardID) }}
+              </ng-template>
+            </td>
+          </tr>
+          <tr *ngIf="!lines.length">
+            <td colspan="4" class="muted">No lines yet. Run OCR, Cloud OCR, or split pasted text.</td>
+          </tr>
+        </tbody>
+      </table>
 
-	  const out: LineRow[] = [];
-	  for (const line of lines) {
-		const { name, body, titleOnly } = this.parseLine(line);
+      <div style="display:flex; gap:8px; justify-content:flex-end">
+        <button class="btn secondary" (click)="step = 'ocr'">Back</button>
+        <button class="btn" [disabled]="!lines.length" (click)="importNow()">Import</button>
+      </div>
 
-		if (name) {
-		  const norm = this.normalizeName(name);
-		  const existing = byNormTitle.get(norm);
-		  if (existing && body) {
-			// Existing card → make a comment; drop the name
-			out.push({ text: body, kind: 'comment', cardID: Number(existing.id) });
-		  } else {
-			// No existing card → create a new card.
-			// Put the "body" into the card detail later (importNow handles it).
-			const title = name;
-			const combined = body ? `${name} — ${body}` : name;
-			out.push({ text: combined, kind: 'card', category: 'General' });
-		  }
-		} else if (titleOnly) {
-		  out.push({ text: titleOnly, kind: 'card', category: 'General' });
-		}
-	  }
-	  return out;
-	}
-	  
-  // ----------------- Cloud OCR (Netlify function) -----------------
-async runCloudOCR() {
-  // Auto-correct common typo (missing leading slash)
-  if (!this.cloudEndpoint.startsWith('/')) {
-    this.cloudEndpoint = '/.netlify/functions/ocr';
-  }
-  if (!this.images.length) { this.error = 'Please upload an image first.'; return; }
+      <div *ngIf="error" class="alert error" style="margin-top:8px">
+        <strong>Error:</strong> {{ error }}
+      </div>
+    </div>
+  </div>
+</section>
 
-  this.cloudBusy = true;
-  this.error = '';
-  this.status = 'Sending image to cloud OCR...';
-  this.progress = 0;
-
-  try {
-    const file = this.images[0].file;
-    const fd = new FormData();
-    fd.append('image', file, file.name);
-
-    const resp = await fetch(this.cloudEndpoint, { method: 'POST', body: fd });
-
-    // Try to read JSON either way so we can show the server-side message
-    let data: any = null;
-    try { data = await resp.json(); } catch {}
-
-    if (!resp.ok) {
-      throw new Error(data?.error || (`${resp.status} ${resp.statusText}`));
-    }
-
-    const text = (data?.text || (Array.isArray(data?.lines) ? data.lines.join('\n') : '')).trim();
-    this.ocrText = text;
-    this.splitFromText();
-    this.status = 'Cloud OCR done';
-  } catch (e: any) {
-    this.error = String(e?.message || e);
-  } finally {
-    this.cloudBusy = false;
-  }
-}
-
-  // ----------------- Local OCR (Tesseract) -----------------
-  private async preprocessFile(file: File): Promise<HTMLCanvasElement | File> {
-    if (!this.enhanceImage) return file;
-
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    await new Promise<void>((res, rej) => {
-      img.onload = () => res();
-      img.onerror = (e) => rej(e);
-      img.src = url;
-    });
-
-    const scale = 1.5;
-    const w = Math.floor(img.width * scale);
-    const h = Math.floor(img.height * scale);
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(img, 0, 0, w, h);
-
-    // grayscale + simple adaptive threshold
-    const imageData = ctx.getImageData(0, 0, w, h);
-    const data = imageData.data;
-    const contrast = 1.25;
-
-    const integ = new Float64Array(w * h);
-    for (let y = 0; y < h; y++) {
-      let rowsum = 0;
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        let v = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        v = (v - 128) * contrast + 128;
-        if (v < 0) v = 0;
-        if (v > 255) v = 255;
-        rowsum += v;
-        const idx = y * w + x;
-        integ[idx] = rowsum + (y > 0 ? integ[idx - w] : 0);
-      }
-    }
-
-    const halfWin = Math.floor(Math.max(15, Math.floor(Math.min(w, h) * 0.02)) / 2);
-    function meanAt(x: number, y: number, half: number) {
-      const x1 = Math.max(0, x - half),
-        y1 = Math.max(0, y - half);
-      const x2 = Math.min(w - 1, x + half),
-        y2 = Math.min(h - 1, y + half);
-      const A = integ[y1 * w + x1];
-      const B = integ[y1 * w + x2];
-      const C = integ[y2 * w + x1];
-      const D = integ[y2 * w + x2];
-      const area = (x2 - x1 + 1) * (y2 - y1 + 1);
-      return (D - B - C + A) / area;
-    }
-
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const i = (y * w + x) * 4;
-        const lum = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-        const mean = meanAt(x, y, halfWin);
-        const isInk = lum < mean - 10;
-        const val = isInk ? 0 : 255;
-        data[i] = data[i + 1] = data[i + 2] = val;
-        data[i + 3] = 255;
-      }
-    }
-    ctx.putImageData(imageData, 0, 0);
-    URL.revokeObjectURL(url);
-    return canvas;
-  }
-
-  async runLocalOCR() {
-    if (!this.images.length) {
-      this.error = 'Please upload an image first.';
-      return;
-    }
-    this.error = '';
-    this.status = 'Loading OCR engine...';
-    this.progress = 0;
-
-    let worker: any;
-    const out: string[] = [];
-
-    try {
-      const { createWorker } = await import('tesseract.js');
-
-      worker = await createWorker('eng', undefined, {
-        logger: (m: any) => {
-          if (m?.status && typeof m.progress === 'number') {
-            this.progress = Math.max(this.progress, Math.round(m.progress * 100));
-          }
-        },
-        langPath: this.useBestModel
-          ? 'https://tessdata.projectnaptha.com/4.0.0_best'
-          : 'https://tessdata.projectnaptha.com/4.0.0',
-      });
-
-      for (let i = 0; i < this.images.length; i++) {
-        const img = this.images[i];
-        this.status = `Reading image ${i + 1} of ${this.images.length}...`;
-        const src = await this.preprocessFile(img.file);
-        await worker.setParameters({
-          tessedit_pageseg_mode: (this.psm === '7' ? 7 : 6) as any,
-          preserve_interword_spaces: '1',
-        });
-        const { data } = await worker.recognize(src as any);
-        out.push((data?.text || '').trim());
-      }
-    } catch (e: any) {
-      this.error = String(e?.message || e);
-    } finally {
-      // Update UI first so terminate can't block the step transition
-      this.ocrText = (out.join('\n') || '').trim();
-      this.lines = (this.ocrText || '')
-        .split(/\r?\n/)
-        .map((s) => s.replace(/[•·•·]+/g, '').trim())
-        .filter(Boolean)
-        .map((s) => ({ text: s, kind: 'card', category: 'General' }));
-      this.progress = 100;
-      this.status = this.ocrText ? 'OCR done' : this.status || 'No text recognized';
-      this.step = 'review';
-
-      try {
-        worker && worker.terminate && worker.terminate(); // fire & forget
-      } catch {}
-    }
-  }
-
-  // ----------------- Import -----------------
-  importNow() {
-    this.importing = true;
-    this.error = '';
-    try {
-      for (const row of this.lines) {
-        if (!row.text?.trim()) continue;
-        if (row.kind === 'card') {
-          this.data.addCard({
-            title: row.text.trim(),
-            detail: '',
-            category: row.category || 'General',
-          });
-        } else if (row.kind === 'comment' && row.cardID) {
-          this.data.addComment(row.cardID, 'You', row.text.trim());
-        }
-      }
-      this.step = 'done';
-    } catch (e: any) {
-      this.error = String(e?.message || e);
-    } finally {
-      this.importing = false;
-    }
-  }
-}
+<!-- Step 4 — Done -->
+<section *ngIf="step === 'done'">
+  <div class="card">
+    <div class="card-header">Import complete</div>
+    <div class="card-body">
+      <p>Your items were added to the wall.</p>
+      <a routerLink="/" class="btn">Go to Prayer Wall</a>
+    </div>
+  </div>
+</section>

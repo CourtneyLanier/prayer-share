@@ -12,7 +12,6 @@ export class PrayerDataService {
   private nextId = 1;
 
   constructor() {
-    // Load from localStorage (simple persistence until Supabase)
     try {
       const raw = localStorage.getItem(this.STORAGE_KEY);
       if (raw) {
@@ -23,18 +22,15 @@ export class PrayerDataService {
       }
     } catch {}
 
-    // Save on every change
     this.cards$.subscribe(cards => {
       try { localStorage.setItem(this.STORAGE_KEY, JSON.stringify(cards)); } catch {}
     });
   }
 
-  // ---------- helpers ----------
   private mutate(updater: (cards: PrayerCard[]) => PrayerCard[]) {
     this._cards$.next(updater([...(this._cards$.value || [])]));
   }
 
-  // ---------- CRUD used by UI ----------
   addCard(input: { title: string; detail?: string; category?: string }) {
     const card: any = {
       id: this.nextId++,
@@ -48,14 +44,6 @@ export class PrayerDataService {
       comments: [] as PrayerComment[],
     };
     this.mutate(cards => [...cards, card]);
-  }
-
-  updateCard(id: number, patch: Partial<PrayerCard & { favorite?: boolean; answerText?: string }>) {
-    this.mutate(cards => cards.map(c => (+c.id === +id ? ({ ...c, ...patch }) as any : c)));
-  }
-
-  deleteCard(id: number) {
-    this.mutate(cards => cards.filter(c => +c.id !== +id));
   }
 
   addComment(cardId: number, author: string, text: string) {
@@ -73,7 +61,15 @@ export class PrayerDataService {
     }));
   }
 
-  // ---- methods your components call (build was failing on these) ----
+  updateCard(id: number, patch: Partial<PrayerCard & { favorite?: boolean; answerText?: string }>) {
+    this.mutate(cards => cards.map(c => (+c.id === +id ? ({ ...c, ...patch }) as any : c)));
+  }
+
+  deleteCard(id: number) {
+    this.mutate(cards => cards.filter(c => +c.id !== +id));
+  }
+
+  // methods used by UI
   updateTitle(id: number, title: string) {
     this.updateCard(id, { title: (title || '').trim() } as any);
   }
@@ -94,7 +90,6 @@ export class PrayerDataService {
     this.updateCard(id, { answered: true, answerText } as any);
   }
 
-  // Testing helper
   clearAll() {
     this._cards$.next([]);
     try { localStorage.removeItem(this.STORAGE_KEY); } catch {}

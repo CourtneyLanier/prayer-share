@@ -27,61 +27,32 @@
   </div>
 </section>
 
-<!-- Step 2 — OCR -->
+<!-- Step 2 — OCR (Cloud only) -->
 <section *ngIf="step === 'ocr'">
   <div class="card">
-    <div class="card-header">Step 2 — OCR (extract text)</div>
+    <div class="card-header">Step 2 — Cloud OCR (OpenAI via Netlify Function)</div>
     <div class="card-body">
-
-      <div class="settings">
-        <label class="checkbox">
-          <input type="checkbox" [(ngModel)]="useBestModel" />
-          Use higher-accuracy model (slower)
-        </label>
-
-        <label class="checkbox">
-          <input type="checkbox" [(ngModel)]="enhanceImage" />
-          Enhance image (grayscale + contrast + threshold)
-        </label>
-
-        <div class="row">
-          <label>Segmentation (PSM)</label>
-          <select class="input" [(ngModel)]="psm">
-            <option value="6">Block of text</option>
-            <option value="7">Single line</option>
-          </select>
-        </div>
-      </div>
 
       <div class="alert">
         <strong>Status:</strong> {{ status || '—' }} <span *ngIf="progress">— {{ progress }}%</span>
       </div>
 
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-bottom:8px;">
-        <button class="btn" (click)="runLocalOCR()">Run OCR</button>
+      <div class="settings" style="margin-top:12px">
+        <div class="row">
+          <label>Endpoint</label>
+          <input class="input" [(ngModel)]="cloudEndpoint" placeholder="/.netlify/functions/ocr" />
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end">
+          <button class="btn" [disabled]="cloudBusy || !images.length" (click)="runCloudOCR()">Run Cloud OCR</button>
+        </div>
       </div>
 
       <textarea class="input" rows="8"
         placeholder="OCR text will appear here; you can edit it by hand."
         [(ngModel)]="ocrText"></textarea>
 
-      <!-- Cloud OCR block -->
-      <div class="settings" style="margin-top:12px">
-        <div class="row">
-          <strong>Cloud OCR (beta)</strong>
-          <span class="muted" style="margin-left:8px">uses Netlify function</span>
-        </div>
-        <div class="row">
-          <label>Endpoint</label>
-          <input class="input" [(ngModel)]="cloudEndpoint" placeholder="/.netlify/functions/ocr" />
-        </div>
-        <div style="display:flex; gap:8px; justify-content:flex-end">
-          <button class="btn secondary" [disabled]="cloudBusy" (click)="runCloudOCR()">Run Cloud OCR</button>
-        </div>
-      </div>
-
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
-        <div class="muted">Or paste text above and split it into lines.</div>
+        <div class="muted">You can edit the extracted text before splitting.</div>
         <div style="display:flex; gap:8px;">
           <button class="btn secondary" (click)="splitFromText()">Split text to lines →</button>
           <button class="btn" (click)="step = 'review'">Go to Review</button>
@@ -143,7 +114,7 @@
 
             <td class="muted">
               <ng-container *ngIf="row.kind === 'card'; else prevComment">
-                {{ (row.text || '—') | slice:0:40 }}{{ (row.text?.length||0) > 40 ? '…' : '' }}
+                {{ (row.text || '—') | slice:0:40 }}{{ ((row.text || '').length) > 40 ? '…' : '' }}
               </ng-container>
               <ng-template #prevComment>
                 <span style="padding:2px 6px; border-radius:10px; background:#eef; margin-right:6px;">comment →</span>
@@ -152,7 +123,7 @@
             </td>
           </tr>
           <tr *ngIf="!lines.length">
-            <td colspan="4" class="muted">No lines yet. Run OCR, Cloud OCR, or split pasted text.</td>
+            <td colspan="4" class="muted">No lines yet. Run Cloud OCR or paste text above and split.</td>
           </tr>
         </tbody>
       </table>

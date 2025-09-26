@@ -1,19 +1,11 @@
 {
-  "$schema": "./node_modules/@angular/service-worker/config/schema.json",
   "index": "/index.html",
   "assetGroups": [
     {
       "name": "app",
       "installMode": "prefetch",
       "resources": {
-        "files": [
-          "/favicon.ico",
-          "/index.csr.html",
-          "/index.html",
-          "/manifest.webmanifest",
-          "/*.css",
-          "/*.js"
-        ]
+        "files": ["/favicon.ico", "/index.html", "/*.css", "/*.js"]
       }
     },
     {
@@ -21,32 +13,23 @@
       "installMode": "lazy",
       "updateMode": "prefetch",
       "resources": {
-        "files": [
-          "/**/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2)"
-        ]
+        "files": ["/assets/**", "/*.(png|jpg|jpeg|svg|webp)"]
       }
     }
-	{
-	  "index": "/index.html",
-      "assetGroups": [
-        { "name": "app", "installMode": "prefetch", "resources": { "files": ["/favicon.ico","/index.html","/*.css","/*.js"] } },
-        { "name": "assets", "installMode": "lazy", "updateMode": "prefetch", "resources": { "files": ["/assets/**","/*.(png|jpg|jpeg|svg|webp)"] } }
-    ],
-	  "dataGroups": [
-		{
-		  "name": "api-online",
-		  "urls": [
-		    "/.netlify/functions/ocr",
-			"https://*.supabase.co/**"
-		  ],
-		  "cacheConfig": {
-			"strategy": "freshness",
-			"maxSize": 50,
-			"maxAge": "1d",
-			"timeout": "5s"
-		  }
-		}
-	  ]
-	}
+  ],
+  "dataGroups": [
+    {
+      "name": "api-online",
+      "urls": [
+        "/.netlify/functions/ocr",
+        "https://*.supabase.co/**"
+      ],
+      "cacheConfig": {
+        "strategy": "freshness",
+        "maxSize": 50,
+        "maxAge": "1d",
+        "timeout": "5s"
+      }
+    }
   ]
 }

@@ -21,7 +21,7 @@
               { "glob": "**/*", "input": "public", "output": "/" }
             ],
             "styles": ["src/styles.css"],
-            "serviceWorker": true,
+            "serviceWorker": false,
             "ngswConfigPath": "ngsw-config.json"
           }
         },

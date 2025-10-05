@@ -6,7 +6,12 @@ import { routes } from './app/app.routes';
 import { isDevMode } from '@angular/core';
 import { provideServiceWorker } from '@angular/service-worker';
 import { enableProdMode } from '@angular/core';
+import { appConfig } from './app/app.config'; 
 
+console.log('[main] starting bootstrap');          // TEMP debug
+bootstrapApplication(AppComponent, appConfig)
+  .then(() => console.log('[main] bootstrapped'))   // TEMP debug
+  .catch(err => console.error('[main] bootstrap error', err));
 bootstrapApplication(AppComponent, { providers: [provideRouter(routes), provideServiceWorker('ngsw-worker.js', {
             enabled: !isDevMode(),
             registrationStrategy: 'registerWhenStable:30000'

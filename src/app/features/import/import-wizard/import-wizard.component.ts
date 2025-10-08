@@ -60,35 +60,31 @@ export class ImportWizardComponent implements OnDestroy {
     this.images = [...(this.images || []), ...next];
   }
 
+
 // ------- Step 1: upload -------
-  onFiles(ev: Event | File[] | null | undefined) {
+  onFiles(ev: Event) {
     try {
-      this.error = '';
+      const input = ev.target as HTMLInputElement | null;
+      const files = Array.from(input?.files ?? []);
 
-      // Allow passing a File[] directly (future-proof) OR a native input event
-      if (Array.isArray(ev)) {
-        if (ev.length) {
-          const next = ev.map(f => ({ file: f, url: URL.createObjectURL(f) }));
-          this.images = [...(this.images || []), ...next];
-          this.step = 'ocr';
-        }
-        return;
-      }
-
-      const input = ev?.target as HTMLInputElement | undefined;
-
-      // Revoke old previews (avoid leaks), then append new ones
+      // Revoke old previews (try/catch so a bad URL can't crash)
       try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
-      this.images = [];
-      this.addImagesFromFileList(input?.files);
 
-      if (this.images.length) this.step = 'ocr'; 
+      this.images = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));
+
+      // If user picked at least one image, advance to OCR
+      if (this.images.length) {
+        this.error = '';
+        this.step = 'ocr';
+      } else {
+        // User canceled the picker; just stay on upload
+        this.status = 'No image selected.';
+      }
     } catch (e: any) {
-      console.error('onFiles error', e);
-      this.error = e?.message || 'Failed to add image(s).';
+      // Never let an exception blank the screen—surface it in the UI
+      this.error = String(e?.message || e);
     }
   }
-
 
   // ------- helpers -------
   trackLine(i: number, row: LineRow) {
@@ -174,6 +170,10 @@ export class ImportWizardComponent implements OnDestroy {
 
   // ------- Cloud OCR only -------
   async runCloudOCR() {
+    if (!this.images.length || !this.images[0]?.file) {
+      this.error = 'Please upload or take a photo first.';
+      return;
+    }
     if (!this.cloudEndpoint.startsWith('/')) this.cloudEndpoint = '/.netlify/functions/ocr';
     if (!this.images.length) { this.error = 'Please upload an image first.'; return; }
 

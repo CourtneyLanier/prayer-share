@@ -51,12 +51,44 @@ export class ImportWizardComponent implements OnDestroy {
   }
 
   // ------- Step 1: upload -------
-  onFiles(ev: Event) {
-    const files = Array.from((ev.target as HTMLInputElement).files || []);
-    this.images.forEach(im => URL.revokeObjectURL(im.url));
-    this.images = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));
-    if (this.images.length) this.step = 'ocr';
+  private addImagesFromFileList(fileList: FileList | null | undefined) {
+    if (!fileList || fileList.length === 0) return;
+    const next = Array.from(fileList).map(file => ({
+      file,
+      url: URL.createObjectURL(file),
+    }));
+    this.images = [...(this.images || []), ...next];
   }
+
+// ------- Step 1: upload -------
+  onFiles(ev: Event | File[] | null | undefined) {
+    try {
+      this.error = '';
+
+      // Allow passing a File[] directly (future-proof) OR a native input event
+      if (Array.isArray(ev)) {
+        if (ev.length) {
+          const next = ev.map(f => ({ file: f, url: URL.createObjectURL(f) }));
+          this.images = [...(this.images || []), ...next];
+          this.step = 'ocr';
+        }
+        return;
+      }
+
+      const input = ev?.target as HTMLInputElement | undefined;
+
+      // Revoke old previews (avoid leaks), then append new ones
+      try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
+      this.images = [];
+      this.addImagesFromFileList(input?.files);
+
+      if (this.images.length) this.step = 'ocr'; 
+    } catch (e: any) {
+      console.error('onFiles error', e);
+      this.error = e?.message || 'Failed to add image(s).';
+    }
+  }
+
 
   // ------- helpers -------
   trackLine(i: number, row: LineRow) {

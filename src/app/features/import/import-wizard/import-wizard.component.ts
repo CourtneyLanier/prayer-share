@@ -40,7 +40,19 @@ export class ImportWizardComponent implements OnDestroy {
   cloudEndpoint = '/.netlify/functions/ocr';
   cloudBusy = false;
 
-  constructor(private data: PrayerDataService) {}
+  constructor(private data: PrayerDataService) {
+  // Surface hidden runtime errors so the page doesn't go blank silently
+    window.addEventListener('error', (e) => {
+      const msg = `Runtime error: ${e.message || e}`;
+      this.error = msg;
+      console.error('[GlobalError]', e);
+    });
+    window.addEventListener('unhandledrejection', (e: any) => {
+      const msg = `Unhandled promise: ${e?.reason?.message || e?.reason || e}`;
+      this.error = msg;
+      console.error('[GlobalRejection]', e);
+    });
+  }
 
   ngOnInit() {
     this.data.cards$.subscribe(c => (this.cards = c || []));
@@ -67,24 +79,23 @@ export class ImportWizardComponent implements OnDestroy {
       const input = ev.target as HTMLInputElement | null;
       const files = Array.from(input?.files ?? []);
 
-      // Revoke old previews (try/catch so a bad URL can't crash)
+    // Revoke old previews safely
       try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
 
-      this.images = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));
+      this.images = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));  
 
-      // If user picked at least one image, advance to OCR
-      if (this.images.length) {
-        this.error = '';
-        this.step = 'ocr';
-      } else {
-        // User canceled the picker; just stay on upload
-        this.status = 'No image selected.';
-      }
+    // Do NOT auto-switch steps here; let the user click “Next → OCR”
+    // if (this.images.length) this.step = 'ocr';
+
+      this.status = this.images.length ? `Loaded ${this.images.length} image(s).` : 'No image selected.';
+      this.error = '';
+      console.log('[ImportWizard] files picked:', this.images.map(i => i.file?.name));
     } catch (e: any) {
-      // Never let an exception blank the screen—surface it in the UI
       this.error = String(e?.message || e);
+      console.error('[ImportWizard] onFiles error', e);
     }
   }
+
 
   // ------- helpers -------
   trackLine(i: number, row: LineRow) {

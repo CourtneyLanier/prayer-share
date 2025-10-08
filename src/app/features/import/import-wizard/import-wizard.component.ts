@@ -1,4 +1,4 @@
-import { Component, OnDestroy } from '@angular/core';
+import { Component, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule } from '@angular/router';
@@ -40,25 +40,26 @@ export class ImportWizardComponent implements OnDestroy {
   cloudEndpoint = '/.netlify/functions/ocr';
   cloudBusy = false;
 
-  constructor(private data: PrayerDataService) {
-  // Surface hidden runtime errors so the page doesn't go blank silently
+  constructor(private data: PrayerDataService, private zone: NgZone) {
+    // Surface hidden runtime errors and ensure the UI updates by running inside Angular's zone
     window.addEventListener('error', (e) => {
       const msg = `Runtime error: ${e.message || e}`;
-      this.error = msg;
       console.error('[GlobalError]', e);
+      this.zone.run(() => { this.error = msg; });
     });
+
     window.addEventListener('unhandledrejection', (e: any) => {
       const msg = `Unhandled promise: ${e?.reason?.message || e?.reason || e}`;
-      this.error = msg;
       console.error('[GlobalRejection]', e);
+      this.zone.run(() => { this.error = msg; });
     });
-  }
 
-  ngOnInit() {
+    // Keep cards list current
     this.data.cards$.subscribe(c => (this.cards = c || []));
   }
 
   ngOnDestroy() {
+    // Revoke any previews we created
     try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
   }
 
@@ -72,21 +73,28 @@ export class ImportWizardComponent implements OnDestroy {
     this.images = [...(this.images || []), ...next];
   }
 
-
-// ------- Step 1: upload -------
-  onFiles(ev: Event) {
+  onFiles(ev: Event | File[] | null | undefined) {
     try {
-      const input = ev.target as HTMLInputElement | null;
+      // Accept either a native input event or a direct File[] (future-proof)
+      if (Array.isArray(ev)) {
+        if (ev.length) {
+          try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
+          this.images = ev.map(f => ({ file: f, url: URL.createObjectURL(f) }));
+        }
+        this.status = this.images.length ? `Loaded ${this.images.length} image(s).` : 'No image selected.';
+        this.error = '';
+        console.log('[ImportWizard] files (direct):', this.images.map(i => i.file?.name));
+        return;
+      }
+
+      const input = ev?.target as HTMLInputElement | null;
       const files = Array.from(input?.files ?? []);
 
-    // Revoke old previews safely
+      // Revoke old previews safely, then rebuild
       try { this.images.forEach(im => URL.revokeObjectURL(im.url)); } catch {}
+      this.images = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));
 
-      this.images = files.map(f => ({ file: f, url: URL.createObjectURL(f) }));  
-
-    // Do NOT auto-switch steps here; let the user click “Next → OCR”
-    // if (this.images.length) this.step = 'ocr';
-
+      // Do NOT auto-switch to OCR; user will click "Next → OCR"
       this.status = this.images.length ? `Loaded ${this.images.length} image(s).` : 'No image selected.';
       this.error = '';
       console.log('[ImportWizard] files picked:', this.images.map(i => i.file?.name));
@@ -95,7 +103,6 @@ export class ImportWizardComponent implements OnDestroy {
       console.error('[ImportWizard] onFiles error', e);
     }
   }
-
 
   // ------- helpers -------
   trackLine(i: number, row: LineRow) {
@@ -148,12 +155,17 @@ export class ImportWizardComponent implements OnDestroy {
   }
 
   splitFromText() {
-    const rawLines = (this.ocrText || '')
-      .split(/\r?\n/)
-      .map(s => s.trim())
-      .filter(Boolean);
-    this.lines = this.smartMapLines(rawLines);
-    this.step = 'review';
+    try {
+      const rawLines = (this.ocrText || '')
+        .split(/\r?\n/)
+        .map(s => s.trim())
+        .filter(Boolean);
+      this.lines = this.smartMapLines(rawLines);
+      this.step = 'review';
+    } catch (e: any) {
+      this.error = String(e?.message || e);
+      console.error('[ImportWizard] splitFromText error', e);
+    }
   }
 
   toggleRowKind(row: any) {
@@ -185,8 +197,9 @@ export class ImportWizardComponent implements OnDestroy {
       this.error = 'Please upload or take a photo first.';
       return;
     }
+
+    // Always use our function path
     if (!this.cloudEndpoint.startsWith('/')) this.cloudEndpoint = '/.netlify/functions/ocr';
-    if (!this.images.length) { this.error = 'Please upload an image first.'; return; }
 
     this.cloudBusy = true;
     this.error = '';
@@ -201,14 +214,18 @@ export class ImportWizardComponent implements OnDestroy {
       let data: any = null;
       try { data = await resp.json(); } catch {}
 
-      if (!resp.ok) throw new Error(data?.error || (`${resp.status} ${resp.statusText}`));
+      if (!resp.ok) {
+        const msg = data?.error || (`${resp.status} ${resp.statusText}`);
+        throw new Error(msg);
+      }
 
-      const text = (data?.text || (Array.isArray(data?.lines) ? data.lines.join('\n') : '')).trim();
+      const text = (data?.text || (Array.isArray(data?.lines) ? data.lines.join('\n') : '') || '').trim();
       this.ocrText = text;
       this.splitFromText();
       this.status = 'Cloud OCR done';
     } catch (e: any) {
       this.error = String(e?.message || e);
+      console.error('[ImportWizard] runCloudOCR error', e);
     } finally {
       this.cloudBusy = false;
     }
@@ -233,6 +250,7 @@ export class ImportWizardComponent implements OnDestroy {
       this.step = 'done';
     } catch (e: any) {
       this.error = String(e?.message || e);
+      console.error('[ImportWizard] importNow error', e);
     } finally {
       this.importing = false;
     }

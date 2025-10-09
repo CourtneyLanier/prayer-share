@@ -1,17 +1,28 @@
+<a routerLink="/" class="btn secondary" style="margin-bottom: 12px">← Back to Prayer Wall</a>
+
+<!-- tiny debug bar so we never go “silent” -->
+<div style="position:sticky;top:0;z-index:5;margin-bottom:8px;padding:6px 8px;border-radius:6px;background:#fff8dc;border:1px solid #ecd68a; font-size:12px;">
+  step: <strong>{{step}}</strong> &nbsp;|&nbsp;
+  images: <strong>{{images.length}}</strong> &nbsp;|&nbsp;
+  status: <strong>{{status || '—'}}</strong> &nbsp;|&nbsp;
+  error: <strong style="color:#a33">{{error || '—'}}</strong>
+</div>
+
+<h2>Import from photo/scan</h2>
+<p class="muted">Phase 1: Upload → <strong>OCR</strong> → Review → Import</p>
+
 <!-- Step 1 — Upload -->
 <section *ngIf="step === 'upload'">
   <div class="card">
     <div class="card-header">Step 1 — Upload</div>
     <div class="card-body">
 
-      <!-- Pick from photos/files -->
       <input
         type="file"
         accept="image/*,.png,.jpg,.jpeg,.webp,.heic,.heif"
         multiple
         (change)="onFiles($event)" />
 
-      <!-- Take a new photo (mobile opens camera; desktop shows picker) -->
       <input
         #cameraPicker
         type="file"
@@ -20,24 +31,142 @@
         (change)="onFiles($event)"
         hidden />
       <div style="margin-top:8px;">
-        <button class="btn" type="button" (click)="cameraPicker.click()">
-          📷 Take photo
-        </button>
+        <button class="btn" type="button" (click)="cameraPicker.click()">📷 Take photo</button>
       </div>
 
-      <!-- Previews -->
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
         <img *ngFor="let im of images"
              [src]="im.url"
              alt="preview"
-             style="height:80px; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,.15)" />
+             style="height:80px; border-radius:6px; box-shadow:0 1px 3px rgba(0,0,0,.15)"/>
       </div>
 
-      <!-- Next -->
       <div style="display:flex; justify-content:flex-end; margin-top:12px;">
-        <button class="btn" [disabled]="!images.length" (click)="step='ocr'">Next → OCR</button>
+        <button class="btn" [disabled]="!images.length" (click)="go('ocr')">Next → OCR</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Step 2 — OCR (Cloud) -->
+<section *ngIf="step === 'ocr'">
+  <div class="card">
+    <div class="card-header">Step 2 — Cloud OCR (OpenAI via Netlify Function)</div>
+    <div class="card-body">
+      <div class="alert">
+        <strong>Status:</strong> {{ status || '—' }} <span *ngIf="progress">— {{ progress }}%</span>
       </div>
 
+      <div class="settings" style="margin-top:12px">
+        <div class="row">
+          <label>Endpoint</label>
+          <input class="input" [(ngModel)]="cloudEndpoint" placeholder="/.netlify/functions/ocr" />
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end">
+          <button class="btn" [disabled]="cloudBusy || !images.length" (click)="runCloudOCR()">Run Cloud OCR</button>
+        </div>
+      </div>
+
+      <textarea class="input" rows="8"
+        placeholder="OCR text will appear here; you can edit it by hand."
+        [(ngModel)]="ocrText"></textarea>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+        <div class="muted">You can edit the extracted text before splitting.</div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn secondary" (click)="go('upload')">Back</button>
+          <button class="btn" (click)="splitFromText()">Split text to lines →</button>
+          <button class="btn" (click)="go('review')">Go to Review</button>
+        </div>
+      </div>
+
+      <div *ngIf="error" class="alert error" style="margin-top:8px">
+        <strong>Error:</strong> {{ error }}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Step 3 — Review -->
+<section *ngIf="step === 'review'">
+  <div class="card">
+    <div class="card-header">Step 3 — Map each line to a new card or a comment</div>
+    <div class="card-body">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:45%">Line</th>
+            <th style="width:15%">Type</th>
+            <th style="width:25%">Target / Category</th>
+            <th style="width:15%">Preview</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let row of lines; trackBy: trackLine">
+            <td><input class="input" [(ngModel)]="row.text" /></td>
+
+            <td style="display:flex; gap:6px; align-items:center">
+              <select class="input" [(ngModel)]="row.kind" style="flex:1">
+                <option value="card">New Card</option>
+                <option value="comment">Comment</option>
+              </select>
+              <button class="btn secondary" style="padding:4px 8px" (click)="toggleRowKind(row)">↔</button>
+            </td>
+
+            <td>
+              <ng-container *ngIf="row.kind === 'card'; else commentTarget">
+                <select class="input" [(ngModel)]="row.category">
+                  <option>General</option>
+                  <option>Family</option>
+                  <option>Work</option>
+                  <option>Health</option>
+                  <option>Church</option>
+                  <option>Friends</option>
+                </select>
+              </ng-container>
+              <ng-template #commentTarget>
+                <select class="input" [(ngModel)]="row.cardID">
+                  <option [ngValue]="undefined">— choose card —</option>
+                  <option *ngFor="let c of cards" [ngValue]="c.id">{{ c.title }}</option>
+                </select>
+              </ng-template>
+            </td>
+
+            <td class="muted">
+              <ng-container *ngIf="row.kind === 'card'; else prevComment">
+                {{ (row.text || '—') | slice:0:40 }}{{ ((row.text || '').length) > 40 ? '…' : '' }}
+              </ng-container>
+              <ng-template #prevComment>
+                <span style="padding:2px 6px; border-radius:10px; background:#eef; margin-right:6px;">comment →</span>
+                {{ cardTitleById(row.cardID) }}
+              </ng-template>
+            </td>
+          </tr>
+          <tr *ngIf="!lines.length">
+            <td colspan="4" class="muted">No lines yet. Run Cloud OCR or paste text above and split.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end">
+        <button class="btn secondary" (click)="go('ocr')">Back</button>
+        <button class="btn" [disabled]="!lines.length" (click)="importNow()">Import</button>
+      </div>
+
+      <div *ngIf="error" class="alert error" style="margin-top:8px">
+        <strong>Error:</strong> {{ error }}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Step 4 — Done -->
+<section *ngIf="step === 'done'">
+  <div class="card">
+    <div class="card-header">Import complete</div>
+    <div class="card-body">
+      <p>Your items were added to the wall.</p>
+      <a routerLink="/" class="btn">Go to Prayer Wall</a>
     </div>
   </div>
 </section>
